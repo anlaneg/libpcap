@@ -69,4 +69,7 @@ Release/
 msdos/.depend.dj
 msdos/bin2c.exe
 msdos/pkt_rx1.lst
+.cproject
+.project
+.settings/
 msdos/pkt_stub.inc
