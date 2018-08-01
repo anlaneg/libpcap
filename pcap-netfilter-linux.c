@@ -732,6 +732,7 @@ netfilter_findalldevs(pcap_if_list_t *devlistp, char *err_str)
 {
 	int sock;
 
+	//创建netlink raw
 	sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_NETFILTER);
 	if (sock < 0) {
 		/* if netlink is not supported this is not fatal */

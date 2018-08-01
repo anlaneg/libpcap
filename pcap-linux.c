@@ -1108,6 +1108,7 @@ pcap_can_set_rfmon_linux(pcap_t *handle)
 	 * (We assume that if we have Wireless Extensions support
 	 * we also have PF_PACKET support.)
 	 */
+	//创建raw socket
 	sock_fd = socket(PF_PACKET, SOCK_RAW, pcap_protocol(handle));
 	if (sock_fd == -1) {
 		pcap_fmt_errmsg_for_errno(handle->errbuf, PCAP_ERRBUF_SIZE,
@@ -1569,10 +1570,12 @@ pcap_activate_linux(pcap_t *handle)
 		goto fail;
 	}
 	if (ret == 1) {
+		//激活成功
 		/*
 		 * Success.
 		 * Try to use memory-mapped access.
 		 */
+		//尝试采用更优的方式TPACKET_VX来获取报文
 		switch (activate_mmap(handle, &status)) {
 
 		case 1:
@@ -1833,6 +1836,7 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 		packet_len = recvmsg(handle->fd, &msg, MSG_TRUNC);
 #else /* defined(HAVE_PACKET_AUXDATA) && defined(HAVE_STRUCT_TPACKET_AUXDATA_TP_VLAN_TCI) */
 		fromlen = sizeof(from);
+		//自fd中读取报文，并将读取的报文内容填充到bp+offset指向的位置
 		packet_len = recvfrom(
 			handle->fd, bp + offset,
 			handle->bufsize - offset, MSG_TRUNC,
@@ -2960,12 +2964,12 @@ pcap_setfilter_linux_common(pcap_t *handle, struct bpf_program *filter,
 	 */
 	if (can_filter_in_kernel) {
 		if ((err = set_kernel_filter(handle, &fcode)) == 0)
-		{
+		{//通过setsocketopt实现向kernel下发filter
 			/*
 			 * Installation succeded - using kernel filter,
 			 * so userland filtering not needed.
 			 */
-			handlep->filter_in_userland = 0;
+			handlep->filter_in_userland = 0;//可在kernel中实现filter,用户态不必filter
 		}
 		else if (err == -1)	/* Non-fatal error */
 		{
@@ -2990,7 +2994,7 @@ pcap_setfilter_linux_common(pcap_t *handle, struct bpf_program *filter,
 	 * calling "pcap_setfilter()".  Otherwise, the kernel filter may
 	 * filter out packets that would pass the new userland filter.
 	 */
-	if (handlep->filter_in_userland) {
+	if (handlep->filter_in_userland) {//如果用户态需要执行filter,则清除kernel的filter
 		if (reset_kernel_filter(handle) == -1) {
 			pcap_fmt_errmsg_for_errno(handle->errbuf,
 			    PCAP_ERRBUF_SIZE, errno,
@@ -3588,6 +3592,7 @@ set_dlt_list_cooked(pcap_t *handle _U_, int sock_fd _U_)
  * PCAP_ERROR_ value on an error that means that the old mechanism won't
  * work either (so it shouldn't be tried).
  */
+//打开packet socket
 static int
 activate_new(pcap_t *handle)
 {
@@ -3615,9 +3620,10 @@ activate_new(pcap_t *handle)
 	 */
 	sock_fd = is_any_device ?
 		socket(PF_PACKET, SOCK_DGRAM, protocol) :
-		socket(PF_PACKET, SOCK_RAW, protocol);
+		socket(PF_PACKET, SOCK_RAW, protocol);//raw socket情况下，对应非any设备
 
 	if (sock_fd == -1) {
+		//如果创建socket fd失败，则报错
 		if (errno == EINVAL || errno == EAFNOSUPPORT) {
 			/*
 			 * We don't support PF_PACKET/SOCK_whatever
@@ -3656,6 +3662,7 @@ activate_new(pcap_t *handle)
 	 * indices for them, and check all of them in
 	 * "pcap_read_packet()".
 	 */
+	//获取loop接口的ifindex(sock_fd只是被借用，无影响）
 	handlep->lo_ifindex = iface_get_id(sock_fd, "lo", handle->errbuf);
 
 	/*
@@ -3796,6 +3803,7 @@ activate_new(pcap_t *handle)
 			return PCAP_ERROR;
 		}
 
+		//将sock_fd绑定到ifindex上
 		if ((err = iface_bind(sock_fd, handlep->ifindex,
 		    handle->errbuf, protocol)) != 1) {
 		    	close(sock_fd);
@@ -3805,6 +3813,7 @@ activate_new(pcap_t *handle)
 				return 0;	/* try old mechanism */
 		}
 	} else {
+		//针对any的处理
 		/*
 		 * The "any" device.
 		 */
@@ -3950,7 +3959,7 @@ activate_new(pcap_t *handle)
 	/*
 	 * We've succeeded. Save the socket FD in the pcap structure.
 	 */
-	handle->fd = sock_fd;
+	handle->fd = sock_fd;//记录要capture报文的fd
 
 #if defined(SO_BPF_EXTENSIONS) && defined(SKF_AD_VLAN_TAG_PRESENT)
 	/*
@@ -4102,6 +4111,7 @@ init_tpacket(pcap_t *handle, int version, const char *version_str)
 	 * Probe whether kernel supports the specified TPACKET version;
 	 * this also gets the length of the header for that version.
 	 */
+	//先获取（防止不支持）
 	if (getsockopt(handle->fd, SOL_PACKET, PACKET_HDRLEN, &val, &len) < 0) {
 		if (errno == ENOPROTOOPT || errno == EINVAL)
 			return 1;	/* no */
@@ -4934,6 +4944,7 @@ static int pcap_wait_for_frames_mmap(pcap_t *handle)
 		 * The timeout is 0 in non-blocking mode, so poll()
 		 * returns immediately.
 		 */
+		//等待报文到来
 		ret = poll(&pollinfo, 1, handlep->poll_timeout);
 		if (ret < 0 && errno != EINTR) {
 			pcap_fmt_errmsg_for_errno(handle->errbuf,
@@ -5623,7 +5634,7 @@ pcap_setfilter_linux_mmap(pcap_t *handle, struct bpf_program *filter)
 	 * the new filter will be used for the next packet.
 	 */
 	if (handlep->filter_in_userland)
-		return ret;
+		return ret;//采用在用户态进行filter的话，直接返回
 
 	/*
 	 * We're filtering in the kernel; the packets present in
@@ -7208,6 +7219,7 @@ fix_offset(pcap_t *handle, struct bpf_insn *p)
 	return 0;
 }
 
+//设置bfp字节码，用于实现kernel过滤条件下发
 static int
 set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 {

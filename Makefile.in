@@ -100,6 +100,7 @@ SRC =	$(PSRC) $(FSRC) $(CSRC) $(SSRC) $(GENSRC)
 
 # We would like to say "OBJ = $(SRC:.c=.o)" but Ultrix's make cannot
 # hack the extra indirection
+#定义OBJ来源
 OBJ =	$(PSRC:.c=.o) $(FSRC:.c=.o) $(CSRC:.c=.o) $(SSRC:.c=.o) $(GENSRC:.c=.o) $(LIBOBJS)
 PUBHDR = \
 	pcap.h \

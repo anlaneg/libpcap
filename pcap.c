@@ -460,6 +460,7 @@ static struct capture_source_type {
  * The list, as returned through "alldevsp", may be null if no interfaces
  * were up and could be opened.
  */
+//列出当前系统有哪些接口可以capture
 int
 pcap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
 {
@@ -502,7 +503,7 @@ pcap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
 	/*
 	 * Return the first entry of the list of all devices.
 	 */
-	*alldevsp = devlist.beginning;
+	*alldevsp = devlist.beginning;//返回首个设备
 	return (0);
 }
 
@@ -1277,9 +1278,11 @@ pcap_lookupdev(char *errbuf)
 	static char device[IF_NAMESIZE + 1];
 	char *ret;
 
+	//找出所有首个接口
 	if (pcap_findalldevs(&alldevs, errbuf) == -1)
 		return (NULL);
 
+	//跳过loopback
 	if (alldevs == NULL || (alldevs->flags & PCAP_IF_LOOPBACK)) {
 		/*
 		 * There are no devices on the list, or the first device
@@ -1299,6 +1302,7 @@ pcap_lookupdev(char *errbuf)
 		/*
 		 * Return the name of the first device on the list.
 		 */
+		//只使用所有设备中的首个设备
 		(void)strlcpy(device, alldevs->name, sizeof(device));
 		ret = device;
 	}
@@ -1976,6 +1980,7 @@ pcap_create(const char *device, char *errbuf)
 	 * rather than, say, a crash when we try to dereference
 	 * the null pointer.
 	 */
+	//如果未指定接口，则使用any
 	if (device == NULL)
 		device_str = strdup("any");
 	else {
@@ -2016,6 +2021,7 @@ pcap_create(const char *device, char *errbuf)
 	 * source types until we find one that works for this
 	 * device or run out of types.
 	 */
+	//检查是否为一些特殊类型接口（检查的方法是每个人上去看一下，如果搞不定，就换下一个）
 	for (i = 0; capture_source_types[i].create_op != NULL; i++) {
 		is_theirs = 0;
 		p = capture_source_types[i].create_op(device_str, errbuf,
@@ -2045,6 +2051,7 @@ pcap_create(const char *device, char *errbuf)
 	/*
 	 * OK, try it as a regular network interface.
 	 */
+	//一般网络接口，直接创建
 	p = pcap_create_interface(device_str, errbuf);
 	if (p == NULL) {
 		/*
@@ -2224,6 +2231,7 @@ pcap_create_common(char *ebuf, size_t size)
 	return (p);
 }
 
+//如果已激活，则报错
 int
 pcap_check_activated(pcap_t *p)
 {
@@ -2575,13 +2583,14 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 			/*
 			 * 0 means EOF, so don't loop if we get 0.
 			 */
-			n = pcap_offline_read(p, cnt, callback, user);
+			n = pcap_offline_read(p, cnt, callback, user);//实现自pcapif文件中读取
 		} else {
 			/*
 			 * XXX keep reading until we get something
 			 * (or an error occurs)
 			 */
 			do {
+				//读取报文并处理
 				n = p->read_op(p, cnt, callback, user);
 			} while (n == 0);
 		}
