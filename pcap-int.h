@@ -150,12 +150,12 @@ struct pcap {
 	/*
 	 * Method to call to read packets on a live capture.
 	 */
-	read_op_t read_op;
+	read_op_t read_op;//capture报文时的处理回调
 
 	/*
 	 * Method to call to read the next packet from a savefile.
 	 */
-	next_packet_op_t next_packet_op;
+	next_packet_op_t next_packet_op;//当自pcap文件中读取时将被回调
 
 #ifdef _WIN32
 	HANDLE handle;
@@ -173,6 +173,7 @@ struct pcap {
 
 	sig_atomic_t break_loop; /* flag set to force break from packet-reading loop */
 
+	//存放不同pcap实现的私有数据
 	void *priv;		/* private data for methods */
 
 #ifdef ENABLE_REMOTE
@@ -180,6 +181,7 @@ struct pcap {
 #endif
 
 	int swapped;
+	//自哪个文件中读取，例如-r选项给出时
 	FILE *rfile;		/* null if live capture, non-null if savefile */
 	u_int fddipad;
 	struct pcap *next;	/* list of open pcaps that need stuff cleared on close */
@@ -194,7 +196,7 @@ struct pcap {
 	int version_minor;
 
 	int snapshot;
-	int linktype;		/* Network linktype */
+	int linktype;		/* Network linktype */ //报文的链路类型
 	int linktype_ext;       /* Extended information stored in the linktype field of a file */
 	int tzoff;		/* timezone offset */
 	int offset;		/* offset for proper alignment */
@@ -257,14 +259,14 @@ struct pcap {
 	 */
 	activate_op_t activate_op;
 	can_set_rfmon_op_t can_set_rfmon_op;
-	inject_op_t inject_op;
+	inject_op_t inject_op;//通过此回调可以向kernel发送报文
 	save_current_filter_op_t save_current_filter_op;
-	setfilter_op_t setfilter_op;
-	setdirection_op_t setdirection_op;
+	setfilter_op_t setfilter_op;//负责下发bfp规则
+	setdirection_op_t setdirection_op;//负责设置只收取收发方向的包（例如仅收，例如仅发）
 	set_datalink_op_t set_datalink_op;
 	getnonblock_op_t getnonblock_op;
 	setnonblock_op_t setnonblock_op;
-	stats_op_t stats_op;
+	stats_op_t stats_op;//获取统计信息
 
 	/*
 	 * Routine to use as callback for pcap_next()/pcap_next_ex().

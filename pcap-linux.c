@@ -1154,6 +1154,7 @@ pcap_can_set_rfmon_linux(pcap_t *handle)
  *
  * Or can we get them in binary form from netlink?
  */
+//自/proc/net/dev读取接口if_name的drop统计数
 static long int
 linux_if_drops(const char * if_name)
 {
@@ -1163,6 +1164,7 @@ linux_if_drops(const char * if_name)
 	int field_to_convert = 3, if_name_sz = strlen(if_name);
 	long int dropped_pkts = 0;
 
+	//打开/proc/net/dev文件
 	file = fopen("/proc/net/dev", "r");
 	if (!file)
 		return 0;
@@ -1179,22 +1181,28 @@ linux_if_drops(const char * if_name)
 		}
 
 		/* find iface and make sure it actually matches -- space before the name and : after it */
+		//找出被capture的接口那一行
+		//face |bytes    packets errs drop fifo frame compressed multicast|
+		//例如：enp0s31f6: 11909640325 76788553  192 19728    0    96          0      5676 46164
 		if ((bufptr = strstr(buffer, if_name)) &&
 			(bufptr == buffer || *(bufptr-1) == ' ') &&
 			*(bufptr + if_name_sz) == ':')
 		{
-			bufptr = bufptr + if_name_sz + 1;
+			bufptr = bufptr + if_name_sz + 1;//指向bytes行
 
 			/* grab the nth field from it */
+			//跳过field_to_convert（4）个field，即采用"drop"
 			while( --field_to_convert && *bufptr != '\0')
 			{
-				while (*bufptr != '\0' && *(bufptr++) == ' ');
-				while (*bufptr != '\0' && *(bufptr++) != ' ');
+				while (*bufptr != '\0' && *(bufptr++) == ' ');//跳过一个field前的空格
+				while (*bufptr != '\0' && *(bufptr++) != ' ');//跳过此field
 			}
 
 			/* get rid of any final spaces */
+			//跳过空格
 			while (*bufptr != '\0' && *bufptr == ' ') bufptr++;
 
+			//转换为drop字节
 			if (*bufptr != '\0')
 				dropped_pkts = strtol(bufptr, NULL, 10);
 
@@ -2049,6 +2057,7 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 
 	/* Run the packet filter if not using kernel filter */
 	if (handlep->filter_in_userland && handle->fcode.bf_insns) {
+		//在用户态执行bpf规则
 		if (bpf_filter_with_aux_data(handle->fcode.bf_insns, bp,
 		    packet_len, caplen, &aux_data) == 0) {
 			/* rejected by filter */
@@ -2217,6 +2226,7 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	 */
 	if (handle->opt.promisc)
 	{
+		//读取/proc/net/dev文件，用当前值减去之前值，得出capture期间报文的drop
 		if_dropped = handlep->proc_dropped;
 		handlep->proc_dropped = linux_if_drops(handlep->device);
 		handlep->stat.ps_ifdrop += (handlep->proc_dropped - if_dropped);
@@ -5014,7 +5024,7 @@ static int pcap_handle_packet_mmap(
 		pcap_t *handle,
 		pcap_handler callback,
 		u_char *user,
-		unsigned char *frame,
+		unsigned char *frame,//数据起始位置（含tp头）
 		unsigned int tp_len,
 		unsigned int tp_mac,
 		unsigned int tp_snaplen,
@@ -5412,6 +5422,7 @@ pcap_read_linux_mmap_v2(pcap_t *handle, int max_packets, pcap_handler callback,
 	/* wait for frames availability.*/
 	h.raw = RING_GET_CURRENT_FRAME(handle);
 	if (h.h2->tp_status == TP_STATUS_KERNEL) {
+		//报文当前属于kernel,等待
 		/*
 		 * The current frame is owned by the kernel; wait for
 		 * a frame to be handed to us.
@@ -5431,13 +5442,14 @@ pcap_read_linux_mmap_v2(pcap_t *handle, int max_packets, pcap_handler callback,
 		 */
 		h.raw = RING_GET_CURRENT_FRAME(handle);
 		if (h.h2->tp_status == TP_STATUS_KERNEL)
-			break;
+			break;//如果此报文属于kernel,则跳出
 
+		//当前为V2版本，故使用h.h2成员变量
 		ret = pcap_handle_packet_mmap(
 				handle,
 				callback,
 				user,
-				h.raw,
+				h.raw,//收到的报文
 				h.h2->tp_len,
 				h.h2->tp_mac,
 				h.h2->tp_snaplen,

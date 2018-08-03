@@ -2120,6 +2120,7 @@ initialize_ops(pcap_t *p)
 	p->oneshot_callback = pcap_oneshot;
 }
 
+//申请pcap_t所需要的内存，及pcap_t所需要的私有数据的大小
 static pcap_t *
 pcap_alloc_pcap_t(char *ebuf, size_t size)
 {
@@ -2164,6 +2165,7 @@ pcap_alloc_pcap_t(char *ebuf, size_t size)
 #endif /* MSDOS */
 #endif /* _WIN32 */
 
+	//初始化p的私有数据
 	if (size == 0) {
 		/* No private data was requested. */
 		p->priv = NULL;
@@ -2183,7 +2185,7 @@ pcap_create_common(char *ebuf, size_t size)
 {
 	pcap_t *p;
 
-	p = pcap_alloc_pcap_t(ebuf, size);
+	p = pcap_alloc_pcap_t(ebuf, size);//创建pcap_t结构及其私有空间
 	if (p == NULL)
 		return (NULL);
 
@@ -2583,19 +2585,21 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 			/*
 			 * 0 means EOF, so don't loop if we get 0.
 			 */
-			n = pcap_offline_read(p, cnt, callback, user);//实现自pcapif文件中读取
+			n = pcap_offline_read(p, cnt, callback, user);//实现自pcapif文件中读取并处理
 		} else {
 			/*
 			 * XXX keep reading until we get something
 			 * (or an error occurs)
 			 */
 			do {
-				//读取报文并处理
+				//自接口capture报文，并处理
 				n = p->read_op(p, cnt, callback, user);
 			} while (n == 0);
 		}
 		if (n <= 0)
-			return (n);
+			return (n);//处理失败，返回
+
+		//检查是否为无限capture报文，如果不是，则减少计数，等计数小于0时，直接返回
 		if (!PACKET_COUNT_IS_UNLIMITED(cnt)) {
 			cnt -= n;
 			if (cnt <= 0)
@@ -3366,6 +3370,7 @@ pcap_strerror(int errnum)
 #endif
 }
 
+//负责下发bpf规则
 int
 pcap_setfilter(pcap_t *p, struct bpf_program *fp)
 {

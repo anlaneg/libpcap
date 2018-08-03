@@ -197,7 +197,7 @@ typedef enum {
  * that's not what the underlying packet capture mechanism supplies.
  */
 struct pcap_pkthdr {
-	struct timeval ts;	/* time stamp */
+	struct timeval ts;	/* time stamp */ //报文收到的时间
 	bpf_u_int32 caplen;	/* length of portion present */
 	bpf_u_int32 len;	/* length this packet (off wire) */
 };
@@ -206,8 +206,11 @@ struct pcap_pkthdr {
  * As returned by the pcap_stats()
  */
 struct pcap_stat {
+	//由libpcap收到了多少个报文（过滤前）
 	u_int ps_recv;		/* number of packets received */
+	//可以不支持（linux实现就不支持）
 	u_int ps_drop;		/* number of packets dropped */
+	//接口丢了多少个包（例如查/proc/net/vdev)
 	u_int ps_ifdrop;	/* drops by interface -- only supported on some platforms */
 #ifdef _WIN32
 	u_int ps_capt;		/* number of packets that reach the application */

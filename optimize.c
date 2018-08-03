@@ -2351,6 +2351,7 @@ icode_to_fcode(compiler_state_t *cstate, struct icode *ic,
  * member of the "pcap_t" with an error message, and return -1;
  * otherwise, return 0.
  */
+//将fp中bpf内容填充到p中
 int
 install_bpf_program(pcap_t *p, struct bpf_program *fp)
 {
@@ -2360,6 +2361,7 @@ install_bpf_program(pcap_t *p, struct bpf_program *fp)
 	 * Validate the program.
 	 */
 	if (!bpf_validate(fp->bf_insns, fp->bf_len)) {
+		//bpf校验
 		pcap_snprintf(p->errbuf, sizeof(p->errbuf),
 			"BPF program is not valid");
 		return (-1);
@@ -2368,16 +2370,19 @@ install_bpf_program(pcap_t *p, struct bpf_program *fp)
 	/*
 	 * Free up any already installed program.
 	 */
-	pcap_freecode(&p->fcode);
+	pcap_freecode(&p->fcode);//删除掉以前安装的
 
 	prog_size = sizeof(*fp->bf_insns) * fp->bf_len;
 	p->fcode.bf_len = fp->bf_len;
 	p->fcode.bf_insns = (struct bpf_insn *)malloc(prog_size);
 	if (p->fcode.bf_insns == NULL) {
+		//申请内存失败
 		pcap_fmt_errmsg_for_errno(p->errbuf, sizeof(p->errbuf),
 		    errno, "malloc");
 		return (-1);
 	}
+
+	//将bpf program填充到bf_insns
 	memcpy(p->fcode.bf_insns, fp->bf_insns, prog_size);
 	return (0);
 }
