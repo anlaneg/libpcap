@@ -906,6 +906,9 @@ snf)
 
 null)
 	;;
+dpdk-vpc)
+	
+	;;
 
 *)
 	AC_MSG_ERROR($V_PCAP is not a valid pcap type)
