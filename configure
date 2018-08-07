@@ -6665,6 +6665,9 @@ snf)
 
 null)
 	;;
+dpdk-vpc)
+
+	;;
 
 *)
 	as_fn_error $? "$V_PCAP is not a valid pcap type" "$LINENO" 5
