@@ -116,8 +116,8 @@ enum {
  * Thanks to Ani Sinha <ani@arista.com> for providing initial implementation
  */
 u_int
-bpf_filter_with_aux_data(const struct bpf_insn *pc, const u_char *p,
-    u_int wirelen, u_int buflen, const struct bpf_aux_data *aux_data)
+bpf_filter_with_aux_data(const struct bpf_insn *pc/*指令*/, const u_char *p/*指向报文*/,
+    u_int wirelen/*报文原始长度*/, u_int buflen/*报文当前长度*/, const struct bpf_aux_data *aux_data/*参数*/)
 {
 	register u_int32 A, X;
 	register bpf_u_int32 k;
@@ -128,19 +128,22 @@ bpf_filter_with_aux_data(const struct bpf_insn *pc, const u_char *p,
 		 * No filter means accept all.
 		 */
 		return (u_int)-1;
+	//定义A,X寄存器
 	A = 0;
 	X = 0;
 	--pc;
 	for (;;) {
-		++pc;
+		++pc;//增加pc指针
 		switch (pc->code) {
 
 		default:
 			abort();
 		case BPF_RET|BPF_K:
+		    //执行return指令
 			return (u_int)pc->k;
 
 		case BPF_RET|BPF_A:
+		    //执行return指令
 			return (u_int)A;
 
 		case BPF_LD|BPF_W|BPF_ABS:
@@ -148,7 +151,7 @@ bpf_filter_with_aux_data(const struct bpf_insn *pc, const u_char *p,
 			if (k > buflen || sizeof(int32_t) > buflen - k) {
 				return 0;
 			}
-			A = EXTRACT_LONG(&p[k]);
+			A = EXTRACT_LONG(&p[k]);//加载p的k字节，将其解析为uint32_t类型，并置给A
 			continue;
 
 		case BPF_LD|BPF_H|BPF_ABS:
@@ -240,7 +243,7 @@ bpf_filter_with_aux_data(const struct bpf_insn *pc, const u_char *p,
 			continue;
 
 		case BPF_LDX|BPF_MEM:
-			X = mem[pc->k];
+			X = mem[pc->k];//加载内存
 			continue;
 
 		case BPF_ST:
@@ -296,7 +299,7 @@ bpf_filter_with_aux_data(const struct bpf_insn *pc, const u_char *p,
 			continue;
 
 		case BPF_ALU|BPF_SUB|BPF_X:
-			A -= X;
+			A -= X;//Ａ寄存器，x寄存器相减
 			continue;
 
 		case BPF_ALU|BPF_MUL|BPF_X:
@@ -372,10 +375,10 @@ bpf_filter_with_aux_data(const struct bpf_insn *pc, const u_char *p,
 			continue;
 
 		case BPF_ALU|BPF_RSH|BPF_K:
-			A >>= pc->k;
+			A >>= pc->k;//右移pc->k位
 			continue;
 
-		case BPF_ALU|BPF_NEG:
+		case BPF_ALU|BPF_NEG://取补码
 			/*
 			 * Most BPF arithmetic is unsigned, but negation
 			 * can't be unsigned; throw some casts to
@@ -385,11 +388,11 @@ bpf_filter_with_aux_data(const struct bpf_insn *pc, const u_char *p,
 			continue;
 
 		case BPF_MISC|BPF_TAX:
-			X = A;
+			X = A;//x置Ａ
 			continue;
 
 		case BPF_MISC|BPF_TXA:
-			A = X;
+			A = X;//A置为x
 			continue;
 		}
 	}

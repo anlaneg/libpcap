@@ -50,6 +50,7 @@ bpf_dump(const struct bpf_program *p, int option)
 			       insn->code, insn->jt, insn->jf, insn->k);
 		return;
 	}
+	//反汇编
 	for (i = 0; i < n; ++insn, ++i) {
 #ifdef BDEBUG
 		if (i < NBIDS && bids[i] > 0)

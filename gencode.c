@@ -652,6 +652,7 @@ syntax(compiler_state_t *cstate)
 	bpf_error(cstate, "syntax error in filter expression");
 }
 
+//bpf程序编译
 int
 pcap_compile(pcap_t *p, struct bpf_program *program,
 	     const char *buf, int optimize, bpf_u_int32 mask)

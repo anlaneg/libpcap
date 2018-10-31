@@ -1990,6 +1990,7 @@ daemon_unpackapplyfilter(SOCKET sockctrl_in, struct session *session, uint32 *pl
 		return -2;
 	}
 
+	//设置bpf指令缓冲
 	bf_insn = (struct bpf_insn *) malloc (sizeof(struct bpf_insn) * bf_prog.bf_len);
 	if (bf_insn == NULL)
 	{
@@ -2519,6 +2520,8 @@ rpcapd_recv(SOCKET sock, char *buffer, size_t toread, uint32 *plen, char *errmsg
 		pcap_snprintf(errmsgbuf, PCAP_ERRBUF_SIZE, "Message payload is too short");
 		return -2;
 	}
+
+	//自socket读取数据
 	nread = sock_recv(sock, buffer, toread,
 	    SOCK_RECEIVEALL_YES|SOCK_EOF_IS_ERROR, errbuf, PCAP_ERRBUF_SIZE);
 	if (nread == -1)

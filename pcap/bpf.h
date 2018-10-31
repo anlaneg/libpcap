@@ -232,9 +232,9 @@ struct bpf_program {
  * The instruction data structure.
  */
 struct bpf_insn {
-	u_short	code;
-	u_char 	jt;
-	u_char 	jf;
+	u_short	code;//指令
+	u_char 	jt;//一般指op结果为真时，跳jt偏移量
+	u_char 	jf;//一般指jf结果为假时，跳jf偏移量
 	bpf_u_int32 k;
 };
 
