@@ -53,7 +53,6 @@
 #include <netinet/tcp.h>
 #include <netinet/tcpip.h>
 
-#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -134,12 +133,15 @@ pcap_read_snit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 			    errno, "pcap_read");
 			return (-1);
 		}
-		bp = (u_char *)p->buffer;
+		bp = p->buffer;
 	} else
 		bp = p->bp;
 
 	/*
 	 * loop through each snapshot in the chunk
+	 *
+	 * This assumes that a single buffer of packets will have
+	 * <= INT_MAX packets, so the packet count doesn't overflow.
 	 */
 	n = 0;
 	ep = bp + cc;
@@ -190,7 +192,7 @@ pcap_read_snit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 		if (caplen > p->snapshot)
 			caplen = p->snapshot;
 
-		if (bpf_filter(p->fcode.bf_insns, cp, nlp->nh_pktlen, caplen)) {
+		if (pcap_filter(p->fcode.bf_insns, cp, nlp->nh_pktlen, caplen)) {
 			struct pcap_pkthdr h;
 			h.ts = ntp->nh_timestamp;
 			h.len = nlp->nh_pktlen;
@@ -208,7 +210,7 @@ pcap_read_snit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 }
 
 static int
-pcap_inject_snit(pcap_t *p, const void *buf, size_t size)
+pcap_inject_snit(pcap_t *p, const void *buf, int size)
 {
 	struct strbuf ctl, data;
 
@@ -332,12 +334,16 @@ pcap_activate_snit(pcap_t *p)
 	if (fd < 0 && errno == EACCES)
 		p->fd = fd = open(dev, O_RDONLY);
 	if (fd < 0) {
-		if (errno == EACCES)
+		if (errno == EACCES) {
 			err = PCAP_ERROR_PERM_DENIED;
-		else
+			snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
+			    "Attempt to open %s failed with EACCES - root privileges may be required",
+			    dev);
+		} else {
 			err = PCAP_ERROR;
-		pcap_fmt_errmsg_for_errno(p->errbuf, PCAP_ERRBUF_SIZE,
-		    errno, "%s", dev);
+			pcap_fmt_errmsg_for_errno(p->errbuf, PCAP_ERRBUF_SIZE,
+			    errno, "%s", dev);
+		}
 		goto bad;
 	}
 
@@ -431,18 +437,19 @@ pcap_activate_snit(pcap_t *p)
 	 * Ethernet framing).
 	 */
 	p->dlt_list = (u_int *) malloc(sizeof(u_int) * 2);
-	/*
-	 * If that fails, just leave the list empty.
-	 */
-	if (p->dlt_list != NULL) {
-		p->dlt_list[0] = DLT_EN10MB;
-		p->dlt_list[1] = DLT_DOCSIS;
-		p->dlt_count = 2;
+	if (p->dlt_list == NULL) {
+		pcap_fmt_errmsg_for_errno(p->errbuf, PCAP_ERRBUF_SIZE,
+		    errno, "malloc");
+		err = PCAP_ERROR;
+		goto bad;
 	}
+	p->dlt_list[0] = DLT_EN10MB;
+	p->dlt_list[1] = DLT_DOCSIS;
+	p->dlt_count = 2;
 
 	p->read_op = pcap_read_snit;
 	p->inject_op = pcap_inject_snit;
-	p->setfilter_op = install_bpf_program;	/* no kernel filtering */
+	p->setfilter_op = pcap_install_bpf_program;	/* no kernel filtering */
 	p->setdirection_op = NULL;	/* Not implemented. */
 	p->set_datalink_op = NULL;	/* can't change data link type */
 	p->getnonblock_op = pcap_getnonblock_fd;
@@ -460,7 +467,7 @@ pcap_create_interface(const char *device _U_, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(ebuf, sizeof (struct pcap_snit));
+	p = PCAP_CREATE_COMMON(ebuf, struct pcap_snit);
 	if (p == NULL)
 		return (NULL);
 

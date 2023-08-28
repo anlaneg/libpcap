@@ -26,11 +26,6 @@
 #include <config.h>
 #endif
 
-#ifdef DECNETLIB
-#include <sys/types.h>
-#include <netdnet/dnetdb.h>
-#endif
-
 #ifdef _WIN32
   #include <winsock2.h>
   #include <ws2tcpip.h>
@@ -127,7 +122,6 @@
   #include <netdb.h>
 #endif /* _WIN32 */
 
-#include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -135,9 +129,13 @@
 
 #include "pcap-int.h"
 
+#include "diag-control.h"
+
 #include "gencode.h"
 #include <pcap/namedb.h>
 #include "nametoaddr.h"
+
+#include "thread-local.h"
 
 #ifdef HAVE_OS_PROTO_H
 #include "os-proto.h"
@@ -162,7 +160,23 @@ pcap_nametoaddr(const char *name)
 	bpf_u_int32 **p;
 	struct hostent *hp;
 
+	/*
+	 * gethostbyname() is deprecated on Windows, perhaps because
+	 * it's not thread-safe, or because it doesn't support IPv6,
+	 * or both.
+	 *
+	 * We deprecate pcap_nametoaddr() on all platforms because
+	 * it's not thread-safe; we supply it for backwards compatibility,
+	 * so suppress the deprecation warning.  We could, I guess,
+	 * use getaddrinfo() and construct the array ourselves, but
+	 * that's probably not worth the effort, as that wouldn't make
+	 * this thread-safe - we can't change the API to require that
+	 * our caller free the address array, so we still have to reuse
+	 * a local array.
+	 */
+DIAG_OFF_DEPRECATION
 	if ((hp = gethostbyname(name)) != NULL) {
+DIAG_ON_DEPRECATION
 #ifndef h_addr
 		hlist[0] = (bpf_u_int32 *)hp->h_addr;
 		NTOHL(hp->h_addr);
@@ -200,10 +214,10 @@ pcap_nametoaddrinfo(const char *name)
  *  XXX - not guaranteed to be thread-safe!  See below for platforms
  *  on which it is thread-safe and on which it isn't.
  */
+#if defined(_WIN32) || defined(__CYGWIN__)
 bpf_u_int32
-pcap_nametonetaddr(const char *name)
+pcap_nametonetaddr(const char *name _U_)
 {
-#ifdef _WIN32
 	/*
 	 * There's no "getnetbyname()" on Windows.
 	 *
@@ -217,7 +231,11 @@ pcap_nametonetaddr(const char *name)
 	 * of *UN*X* machines.)
 	 */
 	return 0;
-#else
+}
+#else /* _WIN32 */
+bpf_u_int32
+pcap_nametonetaddr(const char *name)
+{
 	/*
 	 * UN*X.
 	 */
@@ -231,6 +249,21 @@ pcap_nametonetaddr(const char *name)
 	int h_errnoval;
 	int err;
 
+	/*
+	 * Apparently, the man page at
+	 *
+	 *    http://man7.org/linux/man-pages/man3/getnetbyname_r.3.html
+	 *
+	 * lies when it says
+	 *
+	 *    If the function call successfully obtains a network record,
+	 *    then *result is set pointing to result_buf; otherwise, *result
+	 *    is set to NULL.
+	 *
+	 * and, in fact, at least in some versions of GNU libc, it does
+	 * *not* always get set if getnetbyname_r() succeeds.
+	 */
+	np = NULL;
 	err = getnetbyname_r(name, &result_buf, buf, sizeof buf, &np,
 	    &h_errnoval);
 	if (err != 0) {
@@ -260,24 +293,24 @@ pcap_nametonetaddr(const char *name)
 	else
 		np = &result_buf;
   #else
- 	/*
- 	 * We don't have any getnetbyname_r(); either we have a
- 	 * getnetbyname() that uses thread-specific data, in which
- 	 * case we're thread-safe (sufficiently recent FreeBSD,
- 	 * sufficiently recent Darwin-based OS, sufficiently recent
- 	 * HP-UX, sufficiently recent Tru64 UNIX), or we have the
- 	 * traditional getnetbyname() (everything else, including
- 	 * current NetBSD and OpenBSD), in which case we're not
- 	 * thread-safe.
- 	 */
+	/*
+	 * We don't have any getnetbyname_r(); either we have a
+	 * getnetbyname() that uses thread-specific data, in which
+	 * case we're thread-safe (sufficiently recent FreeBSD,
+	 * sufficiently recent Darwin-based OS, sufficiently recent
+	 * HP-UX, sufficiently recent Tru64 UNIX), or we have the
+	 * traditional getnetbyname() (everything else, including
+	 * current NetBSD and OpenBSD), in which case we're not
+	 * thread-safe.
+	 */
 	np = getnetbyname(name);
   #endif
 	if (np != NULL)
 		return np->n_net;
 	else
 		return 0;
-#endif /* _WIN32 */
 }
+#endif /* _WIN32 */
 
 /*
  * Convert a port name to its port and protocol numbers.
@@ -434,40 +467,33 @@ pcap_nametoport(const char *name, int *port, int *proto)
 int
 pcap_nametoportrange(const char *name, int *port1, int *port2, int *proto)
 {
-	u_int p1, p2;
 	char *off, *cpy;
 	int save_proto;
 
-	if (sscanf(name, "%d-%d", &p1, &p2) != 2) {
-		if ((cpy = strdup(name)) == NULL)
-			return 0;
+	if ((cpy = strdup(name)) == NULL)
+		return 0;
 
-		if ((off = strchr(cpy, '-')) == NULL) {
-			free(cpy);
-			return 0;
-		}
-
-		*off = '\0';
-
-		if (pcap_nametoport(cpy, port1, proto) == 0) {
-			free(cpy);
-			return 0;
-		}
-		save_proto = *proto;
-
-		if (pcap_nametoport(off + 1, port2, proto) == 0) {
-			free(cpy);
-			return 0;
-		}
+	if ((off = strchr(cpy, '-')) == NULL) {
 		free(cpy);
-
-		if (*proto != save_proto)
-			*proto = PROTO_UNDEF;
-	} else {
-		*port1 = p1;
-		*port2 = p2;
-		*proto = PROTO_UNDEF;
+		return 0;
 	}
+
+	*off = '\0';
+
+	if (pcap_nametoport(cpy, port1, proto) == 0) {
+		free(cpy);
+		return 0;
+	}
+	save_proto = *proto;
+
+	if (pcap_nametoport(off + 1, port2, proto) == 0) {
+		free(cpy);
+		return 0;
+	}
+	free(cpy);
+
+	if (*proto != save_proto)
+		*proto = PROTO_UNDEF;
 
 	return 1;
 }
@@ -516,16 +542,16 @@ pcap_nametoproto(const char *str)
 	else
 		p = &result_buf;
   #else
- 	/*
- 	 * We don't have any getprotobyname_r(); either we have a
- 	 * getprotobyname() that uses thread-specific data, in which
- 	 * case we're thread-safe (sufficiently recent FreeBSD,
- 	 * sufficiently recent Darwin-based OS, sufficiently recent
- 	 * HP-UX, sufficiently recent Tru64 UNIX, Windows), or we have
+	/*
+	 * We don't have any getprotobyname_r(); either we have a
+	 * getprotobyname() that uses thread-specific data, in which
+	 * case we're thread-safe (sufficiently recent FreeBSD,
+	 * sufficiently recent Darwin-based OS, sufficiently recent
+	 * HP-UX, sufficiently recent Tru64 UNIX, Windows), or we have
 	 * the traditional getprotobyname() (everything else, including
- 	 * current NetBSD and OpenBSD), in which case we're not
- 	 * thread-safe.
- 	 */
+	 * current NetBSD and OpenBSD), in which case we're not
+	 * thread-safe.
+	 */
 	p = getprotobyname(str);
   #endif
 	if (p != 0)
@@ -554,28 +580,20 @@ struct eproto {
  */
 PCAP_API struct eproto eproto_db[];
 PCAP_API_DEF struct eproto eproto_db[] = {
-	{ "pup", ETHERTYPE_PUP },
-	{ "xns", ETHERTYPE_NS },
+	{ "aarp", ETHERTYPE_AARP },
+	{ "arp", ETHERTYPE_ARP },
+	{ "atalk", ETHERTYPE_ATALK },
+	{ "decnet", ETHERTYPE_DN },
 	{ "ip", ETHERTYPE_IP },
 #ifdef INET6
 	{ "ip6", ETHERTYPE_IPV6 },
 #endif
-	{ "arp", ETHERTYPE_ARP },
-	{ "rarp", ETHERTYPE_REVARP },
-	{ "sprite", ETHERTYPE_SPRITE },
+	{ "lat", ETHERTYPE_LAT },
+	{ "loopback", ETHERTYPE_LOOPBACK },
 	{ "mopdl", ETHERTYPE_MOPDL },
 	{ "moprc", ETHERTYPE_MOPRC },
-	{ "decnet", ETHERTYPE_DN },
-	{ "lat", ETHERTYPE_LAT },
+	{ "rarp", ETHERTYPE_REVARP },
 	{ "sca", ETHERTYPE_SCA },
-	{ "lanbridge", ETHERTYPE_LANBRIDGE },
-	{ "vexp", ETHERTYPE_VEXP },
-	{ "vprod", ETHERTYPE_VPROD },
-	{ "atalk", ETHERTYPE_ATALK },
-	{ "atalkarp", ETHERTYPE_AARP },
-	{ "loopback", ETHERTYPE_LOOPBACK },
-	{ "decdts", ETHERTYPE_DECDTS },
-	{ "decdns", ETHERTYPE_DECDNS },
 	{ (char *)0, 0 }
 };
 
@@ -620,9 +638,9 @@ pcap_nametollc(const char *s)
 static inline u_char
 xdtoi(u_char c)
 {
-	if (isdigit(c))
+	if (c >= '0' && c <= '9')
 		return (u_char)(c - '0');
-	else if (islower(c))
+	else if (c >= 'a' && c <= 'f')
 		return (u_char)(c - 'a' + 10);
 	else
 		return (u_char)(c - 'A' + 10);
@@ -638,8 +656,15 @@ __pcap_atoin(const char *s, bpf_u_int32 *addr)
 	len = 0;
 	for (;;) {
 		n = 0;
-		while (*s && *s != '.')
+		while (*s && *s != '.') {
+			if (n > 25) {
+				/* The result will be > 255 */
+				return -1;
+			}
 			n = n * 10 + *s++ - '0';
+		}
+		if (n > 255)
+			return -1;
 		*addr <<= 8;
 		*addr |= n & 0xff;
 		len += 8;
@@ -650,6 +675,13 @@ __pcap_atoin(const char *s, bpf_u_int32 *addr)
 	/* NOTREACHED */
 }
 
+/*
+ * If 's' is not a string that is a well-formed DECnet address (aa.nnnn),
+ * return zero.  Otherwise parse the address into the low 16 bits of 'addr'
+ * and return a non-zero.  The binary DECnet address consists of a 6-bit area
+ * number and a 10-bit node number; neither area 0 nor node 0 are valid for
+ * normal addressing purposes, but either can appear on the wire.
+ */
 int
 __pcap_atodn(const char *s, bpf_u_int32 *addr)
 {
@@ -657,14 +689,76 @@ __pcap_atodn(const char *s, bpf_u_int32 *addr)
 #define AREAMASK 0176000
 #define NODEMASK 01777
 
-	u_int node, area;
+	/* Initialize to squelch a compiler warning only. */
+	u_int node = 0, area = 0;
+	/*
+	 *               +--+             +--+
+	 *               |  |             |  |
+	 *               v  |             v  |
+	 * --> START --> AREA --> DOT --> NODE -->
+	 *       |          |     |        |
+	 *       |          v     v        |
+	 *       +--------> INVALID <------+
+	 */
+	enum {
+		START,
+		AREA,
+		DOT,
+		NODE,
+		INVALID
+	} fsm_state = START;
 
-	if (sscanf(s, "%d.%d", &area, &node) != 2)
-		return(0);
+	while (*s) {
+		switch (fsm_state) {
+		case START:
+			if (PCAP_ISDIGIT(*s)) {
+				area = *s - '0';
+				fsm_state = AREA;
+				break;
+			}
+			fsm_state = INVALID;
+			break;
+		case AREA:
+			if (*s == '.') {
+				fsm_state = DOT;
+				break;
+			}
+			if (PCAP_ISDIGIT(*s)) {
+				area = area * 10 + *s - '0';
+				if (area <= AREAMASK >> AREASHIFT)
+					break;
+			}
+			fsm_state = INVALID;
+			break;
+		case DOT:
+			if (PCAP_ISDIGIT(*s)) {
+				node = *s - '0';
+				fsm_state = NODE;
+				break;
+			}
+			fsm_state = INVALID;
+			break;
+		case NODE:
+			if (PCAP_ISDIGIT(*s)) {
+				node = node * 10 + *s - '0';
+				if (node <= NODEMASK)
+					break;
+			}
+			fsm_state = INVALID;
+			break;
+		case INVALID:
+			return 0;
+		} /* switch */
+		s++;
+	} /* while */
+	/*
+	 * This condition is false if the string comes from the lexer, but
+	 * let's not depend on that.
+	 */
+	if (fsm_state != NODE)
+		return 0;
 
-	*addr = (area << AREASHIFT) & AREAMASK;
-	*addr |= (node & NODEMASK);
-
+	*addr = area << AREASHIFT | node;
 	return(32);
 }
 
@@ -694,7 +788,7 @@ pcap_ether_aton(const char *s)
 		if (*s == ':' || *s == '.' || *s == '-')
 			s += 1;
 		d = xdtoi(*s++);
-		if (isxdigit((unsigned char)*s)) {
+		if (PCAP_ISXDIGIT(*s)) {
 			d <<= 4;
 			d |= xdtoi(*s++);
 		}
@@ -707,16 +801,18 @@ pcap_ether_aton(const char *s)
 #ifndef HAVE_ETHER_HOSTTON
 /*
  * Roll our own.
- * XXX - not thread-safe, because pcap_next_etherent() isn't thread-
- * safe!  Needs a mutex or a thread-safe pcap_next_etherent().
+ *
+ * This should be thread-safe, as we define the static variables
+ * we use to be thread-local, and as pcap_next_etherent() does so
+ * as well.
  */
 u_char *
 pcap_ether_hostton(const char *name)
 {
 	register struct pcap_etherent *ep;
 	register u_char *ap;
-	static FILE *fp = NULL;
-	static int init = 0;
+	static thread_local FILE *fp = NULL;
+	static thread_local int init = 0;
 
 	if (!init) {
 		fp = fopen(PCAP_ETHERS_FILE, "r");
@@ -750,9 +846,14 @@ pcap_ether_hostton(const char *name)
 {
 	register u_char *ap;
 	u_char a[6];
+	char namebuf[1024];
 
+	/*
+	 * In AIX 7.1 and 7.2: int ether_hostton(char *, struct ether_addr *);
+	 */
+	pcap_strlcpy(namebuf, name, sizeof(namebuf));
 	ap = NULL;
-	if (ether_hostton(name, (struct ether_addr *)a) == 0) {
+	if (ether_hostton(namebuf, (struct ether_addr *)a) == 0) {
 		ap = (u_char *)malloc(6);
 		if (ap != NULL)
 			memcpy((char *)ap, (char *)a, 6);
@@ -760,26 +861,3 @@ pcap_ether_hostton(const char *name)
 	return (ap);
 }
 #endif
-
-/*
- * XXX - not guaranteed to be thread-safe!
- */
-int
-#ifdef	DECNETLIB
-__pcap_nametodnaddr(const char *name, u_short *res)
-{
-	struct nodeent *getnodebyname();
-	struct nodeent *nep;
-
-	nep = getnodebyname(name);
-	if (nep == ((struct nodeent *)0))
-		return(0);
-
-	memcpy((char *)res, (char *)nep->n_addr, sizeof(unsigned short));
-	return(1);
-#else
-__pcap_nametodnaddr(const char *name _U_, u_short *res _U_)
-{
-	return(0);
-#endif
-}

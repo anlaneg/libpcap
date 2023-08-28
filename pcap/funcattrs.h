@@ -118,14 +118,14 @@
     #if PCAP_IS_AT_LEAST_GNUC_VERSION(3,4) \
         || PCAP_IS_AT_LEAST_XL_C_VERSION(12,0)
       /*
-       * GCC 3.4 or later, or some compiler asserting compatibility with
-       * GCC 3.4 or later, or XL C 13.0 or later, so we have
+       * GCC 3.4 and later, or some compiler asserting compatibility with
+       * GCC 3.4 and later, or XL C 13.0 and later, so we have
        * __attribute__((visibility()).
        */
       #define PCAP_API_DEF	__attribute__((visibility("default")))
     #elif PCAP_IS_AT_LEAST_SUNC_VERSION(5,5)
       /*
-       * Sun C 5.5 or later, so we have __global.
+       * Sun C 5.5 and later, so we have __global.
        * (Sun C 5.9 and later also have __attribute__((visibility()),
        * but there's no reason to prefer it with Sun C.)
        */
@@ -147,6 +147,82 @@
 #define PCAP_API	PCAP_API_DEF extern
 
 /*
+ * Definitions to 1) indicate what version of libpcap first had a given
+ * API and 2) allow upstream providers whose build environments allow
+ * APIs to be designated as "first available in this release" to do so
+ * by appropriately defining them.
+ *
+ * On macOS, Apple can tweak this to define PCAP_AVAILABLE_MACOS()
+ * as necessary to make various APIs "weak exports" to make it easier
+ * for software that's distributed in binary form and that uses libpcap
+ * to run on multiple macOS versions and use new APIs when available.
+ * (Yes, such third-party software exists - Wireshark provides binary
+ * packages for macOS, for example.  tcpdump doesn't count, as that's
+ * provided by Apple, so each release can come with a version compiled
+ * to use the APIs present in that release.)
+ *
+ * We don't define it ourselves because, if you're building and
+ * installing libpcap on macOS yourself, the APIs will be available
+ * no matter what OS version you're installing it on.
+ *
+ * For other platforms, we don't define them, leaving it up to
+ * others to do so based on their OS versions, if appropriate.
+ *
+ * We start with libpcap 0.4, as that was the last LBL release, and
+ * I've never seen earlier releases.
+ */
+#ifdef __APPLE__
+/*
+ * Apple - insert #include <os/availability.h> here, and define
+ * PCAP_AVAILABLE_MACOS(v) as
+ *
+ *    API_AVAILABLE(macos(v)) API_UNAVAILABLE(ios, tvos, watchos)
+ *
+ * and add any other OSes to the "unavailable" list as appropriate (iPadOS?
+ * visionOS?  Surely being able to watch packet traffic through your
+ * Apple Vision Pro would be k00l as heck.... :-))
+ */
+#define PCAP_AVAILABLE_MACOS(v)
+#define PCAP_AVAILABLE_0_4	PCAP_AVAILABLE_MACOS(10.0) /* Did any version of Mac OS X ship with this? */
+#define PCAP_AVAILABLE_0_5	PCAP_AVAILABLE_MACOS(10.0) /* Did any version of Mac OS X ship with this? */
+#define PCAP_AVAILABLE_0_6	PCAP_AVAILABLE_MACOS(10.1)
+#define PCAP_AVAILABLE_0_7	PCAP_AVAILABLE_MACOS(10.4)
+#define PCAP_AVAILABLE_0_8	PCAP_AVAILABLE_MACOS(10.4)
+#define PCAP_AVAILABLE_0_9	PCAP_AVAILABLE_MACOS(10.5)
+#define PCAP_AVAILABLE_1_0	PCAP_AVAILABLE_MACOS(10.6)
+/* #define PCAP_AVAILABLE_1_1	no routines added to the API */
+#define PCAP_AVAILABLE_1_2	PCAP_AVAILABLE_MACOS(10.9)
+/* #define PCAP_AVAILABLE_1_3	no routines added to the API */
+/* #define PCAP_AVAILABLE_1_4	no routines added to the API */
+#define PCAP_AVAILABLE_1_5	PCAP_AVAILABLE_MACOS(10.10)
+/* #define PCAP_AVAILABLE_1_6	no routines added to the API */
+#define PCAP_AVAILABLE_1_7	PCAP_AVAILABLE_MACOS(10.12)
+#define PCAP_AVAILABLE_1_8	PCAP_AVAILABLE_MACOS(10.13)
+#define PCAP_AVAILABLE_1_9	PCAP_AVAILABLE_MACOS(10.13)
+#define PCAP_AVAILABLE_1_10	PCAP_AVAILABLE_MACOS(12.1)
+#define PCAP_AVAILABLE_1_11	/* not released yet, so not in macOS yet */
+#else /* __APPLE__ */
+#define PCAP_AVAILABLE_0_4
+#define PCAP_AVAILABLE_0_5
+#define PCAP_AVAILABLE_0_6
+#define PCAP_AVAILABLE_0_7
+#define PCAP_AVAILABLE_0_8
+#define PCAP_AVAILABLE_0_9
+#define PCAP_AVAILABLE_1_0
+/* #define PCAP_AVAILABLE_1_1	no routines added to the API */
+#define PCAP_AVAILABLE_1_2
+/* #define PCAP_AVAILABLE_1_3	no routines added to the API */
+/* #define PCAP_AVAILABLE_1_4	no routines added to the API */
+#define PCAP_AVAILABLE_1_5
+/* #define PCAP_AVAILABLE_1_6	no routines added to the API */
+#define PCAP_AVAILABLE_1_7
+#define PCAP_AVAILABLE_1_8
+#define PCAP_AVAILABLE_1_9
+#define PCAP_AVAILABLE_1_10
+#define PCAP_AVAILABLE_1_11
+#endif /* __APPLE__ */
+
+/*
  * PCAP_NORETURN, before a function declaration, means "this function
  * never returns".  (It must go before the function declaration, e.g.
  * "extern PCAP_NORETURN func(...)" rather than after the function
@@ -165,9 +241,10 @@
     || PCAP_IS_AT_LEAST_HP_C_VERSION(6,10)
   /*
    * Compiler with support for __attribute((noreturn)), or GCC 2.5 and
+   * later, or some compiler asserting compatibility with GCC 2.5 and
    * later, or Solaris Studio 12 (Sun C 5.9) and later, or IBM XL C 10.1
-   * and later (do any earlier versions of XL C support this?), or
-   * HP aCC A.06.10 and later.
+   * and later (do any earlier versions of XL C support this?), or HP aCC
+   * A.06.10 and later.
    */
   #define PCAP_NORETURN __attribute((noreturn))
   #define PCAP_NORETURN_DEF __attribute((noreturn))
@@ -193,7 +270,8 @@
     || PCAP_IS_AT_LEAST_XL_C_VERSION(10,1) \
     || PCAP_IS_AT_LEAST_HP_C_VERSION(6,10)
   /*
-   * Compiler with support for it, or GCC 2.3 and later, or IBM XL C 10.1
+   * Compiler with support for it, or GCC 2.3 and later, or some compiler
+   * asserting compatibility with GCC 2.3 and later, or IBM XL C 10.1
    * and later (do any earlier versions of XL C support this?),
    * or HP aCC A.06.10 and later.
    */
@@ -206,23 +284,21 @@
  * PCAP_DEPRECATED(func, msg), after a function declaration, marks the
  * function as deprecated.
  *
- * The first argument is the name of the function; the second argument is
- * a string giving the warning message to use if the compiler supports that.
- *
- * (Thank you, Microsoft, for requiring the function name.)
+ * The argument is a string giving the warning message to use if the
+ * compiler supports that.
  */
 #if __has_attribute(deprecated) \
     || PCAP_IS_AT_LEAST_GNUC_VERSION(4,5) \
     || PCAP_IS_AT_LEAST_SUNC_VERSION(5,13)
   /*
    * Compiler that supports __has_attribute and __attribute__((deprecated)),
-   * or GCC 4.5 and later, or Sun/Oracle C 12.4 (Sun C 5.13) or later.
+   * or GCC 4.5 and later, or Sun/Oracle C 12.4 (Sun C 5.13) and later.
    *
    * Those support __attribute__((deprecated(msg))) (we assume, perhaps
    * incorrectly, that anything that supports __has_attribute() is
    * recent enough to support __attribute__((deprecated(msg)))).
    */
-  #define PCAP_DEPRECATED(func, msg)	__attribute__((deprecated(msg)))
+  #define PCAP_DEPRECATED(msg)	__attribute__((deprecated(msg)))
 #elif PCAP_IS_AT_LEAST_GNUC_VERSION(3,1)
   /*
    * GCC 3.1 through 4.4.
@@ -230,18 +306,18 @@
    * Those support __attribute__((deprecated)) but not
    * __attribute__((deprecated(msg))).
    */
-  #define PCAP_DEPRECATED(func, msg)	__attribute__((deprecated))
-#elif (defined(_MSC_VER) && (_MSC_VER >= 1500)) && !defined(BUILDING_PCAP)
+  #define PCAP_DEPRECATED(msg)	__attribute__((deprecated))
+#elif defined(_MSC_VER) && !defined(BUILDING_PCAP)
   /*
-   * MSVC from Visual Studio 2008 or later, and we're not building
-   * libpcap itself.
+   * MSVC, and we're not building libpcap itself; it's VS 2015
+   * and later, so we have __declspec(deprecated(...)).
    *
    * If we *are* building libpcap, we don't want this, as it'll warn
    * us even if we *define* the function.
    */
-  #define PCAP_DEPRECATED(func, msg)	__pragma(deprecated(func))
+  #define PCAP_DEPRECATED(msg)	_declspec(deprecated(msg))
 #else
-  #define PCAP_DEPRECATED(func, msg)
+  #define PCAP_DEPRECATED(msg)
 #endif
 
 /*
@@ -249,11 +325,7 @@
  */
 #ifdef _MSC_VER
  #include <sal.h>
- #if _MSC_VER > 1400
-  #define PCAP_FORMAT_STRING(p) _Printf_format_string_ p
- #else
-  #define PCAP_FORMAT_STRING(p) __format_string p
- #endif
+ #define PCAP_FORMAT_STRING(p) _Printf_format_string_ p
 #else
  #define PCAP_FORMAT_STRING(p) p
 #endif

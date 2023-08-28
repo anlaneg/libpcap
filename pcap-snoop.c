@@ -104,7 +104,7 @@ again:
 
 	/*
 	 * XXX - Sigh, snoop_packetlen is a 16 bit quantity.  If we
-	 * got a short length, but read a full sized snoop pakcet,
+	 * got a short length, but read a full sized snoop packet,
 	 * assume we overflowed and add back the 64K...
 	 */
 	if (cc == (p->snapshot + sizeof(struct snoopheader)) &&
@@ -126,7 +126,7 @@ again:
 	}
 
 	if (p->fcode.bf_insns == NULL ||
-	    bpf_filter(p->fcode.bf_insns, cp, datalen, caplen)) {
+	    pcap_filter(p->fcode.bf_insns, cp, datalen, caplen)) {
 		struct pcap_pkthdr h;
 		++psn->stat.ps_recv;
 		h.ts.tv_sec = sh->snoop_timestamp.tv_sec;
@@ -140,7 +140,7 @@ again:
 }
 
 static int
-pcap_inject_snoop(pcap_t *p, const void *buf, size_t size)
+pcap_inject_snoop(pcap_t *p, const void *buf, int size)
 {
 	int ret;
 
@@ -283,14 +283,14 @@ pcap_activate_snoop(pcap_t *p)
 		 * Classical IP devices?
 		 */
 		p->dlt_list = (u_int *) malloc(sizeof(u_int) * 2);
-		/*
-		 * If that fails, just leave the list empty.
-		 */
-		if (p->dlt_list != NULL) {
-			p->dlt_list[0] = DLT_EN10MB;
-			p->dlt_list[1] = DLT_DOCSIS;
-			p->dlt_count = 2;
+		if (p->dlt_list == NULL) {
+			pcap_fmt_errmsg_for_errno(p->errbuf, PCAP_ERRBUF_SIZE,
+			    errno, "malloc");
+			goto bad;
 		}
+		p->dlt_list[0] = DLT_EN10MB;
+		p->dlt_list[1] = DLT_DOCSIS;
+		p->dlt_count = 2;
 	} else if (strncmp("ipg", p->opt.device, 3) == 0 ||
 		   strncmp("rns", p->opt.device, 3) == 0 ||	/* O2/200/2000 FDDI */
 		   strncmp("xpi", p->opt.device, 3) == 0) {
@@ -310,7 +310,7 @@ pcap_activate_snoop(pcap_t *p)
 		p->linktype = DLT_NULL;
 		ll_hdrlen = 4;
 	} else {
-		pcap_snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
 		    "snoop: unknown physical layer type");
 		goto bad;
 	}
@@ -403,7 +403,7 @@ pcap_activate_snoop(pcap_t *p)
 
 	p->read_op = pcap_read_snoop;
 	p->inject_op = pcap_inject_snoop;
-	p->setfilter_op = install_bpf_program;	/* no kernel filtering */
+	p->setfilter_op = pcap_install_bpf_program;	/* no kernel filtering */
 	p->setdirection_op = NULL;	/* Not implemented. */
 	p->set_datalink_op = NULL;	/* can't change data link type */
 	p->getnonblock_op = pcap_getnonblock_fd;
@@ -421,7 +421,7 @@ pcap_create_interface(const char *device _U_, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(ebuf, sizeof (struct pcap_snoop));
+	p = PCAP_CREATE_COMMON(ebuf, struct pcap_snoop);
 	if (p == NULL)
 		return (NULL);
 

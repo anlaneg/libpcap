@@ -48,7 +48,6 @@ struct rtentry;
 #include <netinet/tcp.h>
 #include <netinet/tcpip.h>
 
-#include <ctype.h>
 #include <errno.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -80,7 +79,7 @@ struct rtentry;
  */
 struct pcap_pf {
 	int	filtering_in_kernel; /* using kernel filter */
-	u_long	TotPkts;	/* can't oflow for 79 hrs on ether */
+	u_long	TotPkts;	/* can't overflow for 79 hrs on ether */
 	u_long	TotAccepted;	/* count accepted by filter */
 	u_long	TotDrops;	/* count of dropped packets */
 	long	TotMissed;	/* missed by i/f during this run */
@@ -104,9 +103,7 @@ pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 	register u_char *p, *bp;
 	register int cc, n, buflen, inc;
 	register struct enstamp *sp;
-#ifdef LBL_ALIGN
 	struct enstamp stamp;
-#endif
 	register u_int pad;
 
  again:
@@ -131,11 +128,14 @@ pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 			    sizeof(pc->errbuf), errno, "pf read");
 			return (-1);
 		}
-		bp = (u_char *)pc->buffer + pc->offset;
+		bp = pc->buffer + pc->offset;
 	} else
 		bp = pc->bp;
 	/*
 	 * Loop through each packet.
+	 *
+	 * This assumes that a single buffer of packets will have
+	 * <= INT_MAX packets, so the packet count doesn't overflow.
 	 */
 	n = 0;
 	pad = pc->fddipad;
@@ -160,19 +160,17 @@ pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 			}
 		}
 		if (cc < sizeof(*sp)) {
-			pcap_snprintf(pc->errbuf, sizeof(pc->errbuf),
+			snprintf(pc->errbuf, sizeof(pc->errbuf),
 			    "pf short read (%d)", cc);
 			return (-1);
 		}
-#ifdef LBL_ALIGN
 		if ((long)bp & 3) {
 			sp = &stamp;
 			memcpy((char *)sp, (char *)bp, sizeof(*sp));
 		} else
-#endif
 			sp = (struct enstamp *)bp;
 		if (sp->ens_stamplen != sizeof(*sp)) {
-			pcap_snprintf(pc->errbuf, sizeof(pc->errbuf),
+			snprintf(pc->errbuf, sizeof(pc->errbuf),
 			    "pf short stamplen (%d)",
 			    sp->ens_stamplen);
 			return (-1);
@@ -205,7 +203,7 @@ pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 		 * skipping that padding.
 		 */
 		if (pf->filtering_in_kernel ||
-		    bpf_filter(pc->fcode.bf_insns, p, sp->ens_count, buflen)) {
+		    pcap_filter(pc->fcode.bf_insns, p, sp->ens_count, buflen)) {
 			struct pcap_pkthdr h;
 			pf->TotAccepted++;
 			h.ts = sp->ens_tstamp;
@@ -226,7 +224,7 @@ pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 }
 
 static int
-pcap_inject_pf(pcap_t *p, const void *buf, size_t size)
+pcap_inject_pf(pcap_t *p, const void *buf, int size)
 {
 	int ret;
 
@@ -261,7 +259,7 @@ pcap_stats_pf(pcap_t *p, struct pcap_stat *ps)
 	 *	full.
 	 *
 	 *	"ps_ifdrop" counts packets dropped by the network
-	 *	inteface (regardless of whether they would have passed
+	 *	interface (regardless of whether they would have passed
 	 *	the input filter, of course).
 	 *
 	 * If packet filtering is not being done in the kernel:
@@ -273,7 +271,7 @@ pcap_stats_pf(pcap_t *p, struct pcap_stat *ps)
 	 *	the userland filter.
 	 *
 	 *	"ps_ifdrop" counts packets dropped by the network
-	 *	inteface (regardless of whether they would have passed
+	 *	interface (regardless of whether they would have passed
 	 *	the input filter, of course).
 	 *
 	 * These statistics don't include packets not yet read from
@@ -331,7 +329,7 @@ pcap_activate_pf(pcap_t *p)
 		p->fd = pfopen(p->opt.device, O_RDONLY);
 	if (p->fd < 0) {
 		if (errno == EACCES) {
-			pcap_snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
+			snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
 			    "pf open: %s: Permission denied\n"
 "your system may not be properly configured; see the packetfilter(4) man page",
 			    p->opt.device);
@@ -406,14 +404,15 @@ pcap_activate_pf(pcap_t *p)
 		 * Ethernet framing).
 		 */
 		p->dlt_list = (u_int *) malloc(sizeof(u_int) * 2);
-		/*
-		 * If that fails, just leave the list empty.
-		 */
-		if (p->dlt_list != NULL) {
-			p->dlt_list[0] = DLT_EN10MB;
-			p->dlt_list[1] = DLT_DOCSIS;
-			p->dlt_count = 2;
+		if (p->dlt_list == NULL) {
+			pcap_fmt_errmsg_for_errno(p->errbuf, PCAP_ERRBUF_SIZE,
+			    errno, "malloc");
+			err = PCAP_ERROR;
+			goto bad;
 		}
+		p->dlt_list[0] = DLT_EN10MB;
+		p->dlt_list[1] = DLT_DOCSIS;
+		p->dlt_count = 2;
 		break;
 
 	case ENDT_FDDI:
@@ -464,7 +463,7 @@ pcap_activate_pf(pcap_t *p)
 		 * framing", there's not much we can do, as that
 		 * doesn't specify a particular type of header.
 		 */
-		pcap_snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
 		    "unknown data-link type %u", devparams.end_dev_type);
 		err = PCAP_ERROR;
 		goto bad;
@@ -540,7 +539,7 @@ pcap_create_interface(const char *device _U_, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(ebuf, sizeof (struct pcap_pf));
+	p = PCAP_CREATE_COMMON(ebuf, struct pcap_pf);
 	if (p == NULL)
 		return (NULL);
 
@@ -595,7 +594,7 @@ pcap_setfilter_pf(pcap_t *p, struct bpf_program *fp)
 	/*
 	 * See if BIOCVERSION works.  If not, we assume the kernel doesn't
 	 * support BPF-style filters (it's not documented in the bpf(7)
-	 * or packetfiler(7) man pages, but the code used to fail if
+	 * or packetfilter(7) man pages, but the code used to fail if
 	 * BIOCSETF worked but BIOCVERSION didn't, and I've seen it do
 	 * kernel filtering in DU 4.0, so presumably BIOCVERSION works
 	 * there, at least).
@@ -661,7 +660,7 @@ pcap_setfilter_pf(pcap_t *p, struct bpf_program *fp)
 	/*
 	 * We couldn't do filtering in the kernel; do it in userland.
 	 */
-	if (install_bpf_program(p, fp) < 0)
+	if (pcap_install_bpf_program(p, fp) < 0)
 		return (-1);
 
 	/*

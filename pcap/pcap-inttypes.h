@@ -32,8 +32,13 @@
 #define pcap_pcap_inttypes_h
 
 /*
- * Get the integer types and PRi[doux]64 values from C99 <inttypes.h>
- * defined, by hook or by crook.
+ * If we're compiling with Visual Studio, make sure the C99 integer
+ * types are defined, by hook or by crook.
+ *
+ * XXX - verify that we have at least C99 support on UN*Xes?
+ *
+ * What about MinGW or various DOS toolchains?  We're currently assuming
+ * sufficient C99 support there.
  */
 #if defined(_MSC_VER)
   /*
@@ -47,6 +52,10 @@
   #else
     /*
      * Earlier VS; we have to define this stuff ourselves.
+     * We don't support building libpcap with earlier versions of VS,
+     * but SDKs for Npcap have to support building applications using
+     * earlier versions of VS, so we work around this by defining
+     * those types ourselves, as some files use them.
      */
     typedef unsigned char uint8_t;
     typedef signed char int8_t;
@@ -62,56 +71,31 @@
       typedef long long int64_t;
     #endif
   #endif
+#else /* defined(_MSC_VER) */
+  /*
+   * Not Visual Studio.
+   * Include <inttypes.h> to get the integer types and PRI[doux]64 values
+   * defined.
+   *
+   * If the compiler is MinGW, we assume we have <inttypes.h> - and
+   * support for %zu in the formatted printing functions.
+   *
+   * If the target is UN*X, we assume we have a C99-or-later development
+   * environment, and thus have <inttypes.h> - and support for %zu in
+   * the formatted printing functions.
+   *
+   * If the target is MS-DOS, we assume we have <inttypes.h> - and support
+   * for %zu in the formatted printing functions.
+   *
+   * I.e., assume we have <inttypes.h> and that it suffices.
+   */
 
   /*
-   * These may be defined by <inttypes.h>.
-   *
-   * XXX - for MSVC, we always want the _MSC_EXTENSIONS versions.
-   * What about other compilers?  If, as the MinGW Web site says MinGW
-   * does, the other compilers just use Microsoft's run-time library,
-   * then they should probably use the _MSC_EXTENSIONS even if the
-   * compiler doesn't define _MSC_EXTENSIONS.
-   *
-   * XXX - we currently aren't using any of these, but this allows
-   * their use in the future.
+   * XXX - somehow make sure we have enough C99 support with other
+   * compilers and support libraries?
    */
-  #ifndef PRId64
-    #ifdef _MSC_EXTENSIONS
-      #define PRId64	"I64d"
-    #else
-      #define PRId64	"lld"
-    #endif
-  #endif /* PRId64 */
 
-  #ifndef PRIo64
-    #ifdef _MSC_EXTENSIONS
-      #define PRIo64	"I64o"
-    #else
-      #define PRIo64	"llo"
-    #endif
-  #endif /* PRIo64 */
-
-  #ifndef PRIx64
-    #ifdef _MSC_EXTENSIONS
-      #define PRIx64	"I64x"
-    #else
-      #define PRIx64	"llx"
-    #endif
-  #endif
-
-  #ifndef PRIu64
-    #ifdef _MSC_EXTENSIONS
-      #define PRIu64	"I64u"
-    #else
-      #define PRIu64	"llu"
-    #endif
-  #endif
-#elif defined(__MINGW32__) || !defined(_WIN32)
-  /*
-   * Compiler is MinGW or target is UN*X or MS-DOS.  Just use
-   * <inttypes.h>.
-   */
   #include <inttypes.h>
-#endif
+#endif /* defined(_MSC_VER) */
 
 #endif /* pcap/pcap-inttypes.h */

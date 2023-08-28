@@ -59,7 +59,9 @@ PCAP_API struct	pcap_etherent *pcap_next_etherent(FILE *);
 PCAP_API u_char *pcap_ether_hostton(const char*);
 PCAP_API u_char *pcap_ether_aton(const char *);
 
-PCAP_API bpf_u_int32 **pcap_nametoaddr(const char *);
+PCAP_API
+PCAP_DEPRECATED("this is not reentrant; use 'pcap_nametoaddrinfo' instead")
+bpf_u_int32 **pcap_nametoaddr(const char *);
 PCAP_API struct addrinfo *pcap_nametoaddrinfo(const char *);
 PCAP_API bpf_u_int32 pcap_nametonetaddr(const char *);
 
@@ -71,7 +73,7 @@ PCAP_API int	pcap_nametollc(const char *);
 /*
  * If a protocol is unknown, PROTO_UNDEF is returned.
  * Also, pcap_nametoport() returns the protocol along with the port number.
- * If there are ambiguous entried in /etc/services (i.e. domain
+ * If there are ambiguous entries in /etc/services (i.e. domain
  * can be either tcp or udp) PROTO_UNDEF is returned.
  */
 #define PROTO_UNDEF		-1

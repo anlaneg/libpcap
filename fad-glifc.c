@@ -50,7 +50,6 @@ struct rtentry;		/* declarations in <net/if.h> */
 #include <net/if.h>
 #include <netinet/in.h>
 
-#include <ctype.h>
 #include <errno.h>
 #include <memory.h>
 #include <stdio.h>
@@ -311,7 +310,7 @@ pcap_findalldevs_interfaces(pcap_if_list_t *devlistp, char *errbuf,
 			 * We have a ":"; is it followed by a number?
 			 */
 			q = p + 1;
-			while (isdigit((unsigned char)*q))
+			while (PCAP_ISDIGIT(*q))
 				q++;
 			if (*q == '\0') {
 				/*
@@ -327,7 +326,7 @@ pcap_findalldevs_interfaces(pcap_if_list_t *devlistp, char *errbuf,
 		/*
 		 * Add information for this address to the list.
 		 */
-		if (add_addr_to_if(devlistp, ifrp->lifr_name,
+		if (pcap_add_addr_to_if(devlistp, ifrp->lifr_name,
 		    ifrflags.lifr_flags, get_flags_func,
 		    (struct sockaddr *)&ifrp->lifr_addr,
 		    sizeof (struct sockaddr_storage),

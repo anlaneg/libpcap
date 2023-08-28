@@ -43,7 +43,6 @@
 #include <netinet/tcp.h>
 #include <netinet/tcpip.h>
 
-#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 
@@ -118,7 +117,7 @@ pcap_read_nit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 			    errno, "pcap_read");
 			return (-1);
 		}
-		bp = (u_char *)p->buffer;
+		bp = p->buffer;
 	} else
 		bp = p->bp;
 
@@ -126,6 +125,9 @@ pcap_read_nit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 	 * Loop through each packet.  The increment expression
 	 * rounds up to the next int boundary past the end of
 	 * the previous packet.
+	 *
+	 * This assumes that a single buffer of packets will have
+	 * <= INT_MAX packets, so the packet count doesn't overflow.
 	 */
 	n = 0;
 	ep = bp + cc;
@@ -168,7 +170,7 @@ pcap_read_nit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 			continue;
 
 		default:
-			pcap_snprintf(p->errbuf, sizeof(p->errbuf),
+			snprintf(p->errbuf, sizeof(p->errbuf),
 			    "bad nit state %d", nh->nh_state);
 			return (-1);
 		}
@@ -179,7 +181,7 @@ pcap_read_nit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 		caplen = nh->nh_wirelen;
 		if (caplen > p->snapshot)
 			caplen = p->snapshot;
-		if (bpf_filter(p->fcode.bf_insns, cp, nh->nh_wirelen, caplen)) {
+		if (pcap_filter(p->fcode.bf_insns, cp, nh->nh_wirelen, caplen)) {
 			struct pcap_pkthdr h;
 			h.ts = nh->nh_timestamp;
 			h.len = nh->nh_wirelen;
@@ -197,7 +199,7 @@ pcap_read_nit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 }
 
 static int
-pcap_inject_nit(pcap_t *p, const void *buf, size_t size)
+pcap_inject_nit(pcap_t *p, const void *buf, int size)
 {
 	struct sockaddr sa;
 	int ret;
@@ -342,18 +344,18 @@ pcap_activate_nit(pcap_t *p)
 	 * Ethernet framing).
 	 */
 	p->dlt_list = (u_int *) malloc(sizeof(u_int) * 2);
-	/*
-	 * If that fails, just leave the list empty.
-	 */
-	if (p->dlt_list != NULL) {
-		p->dlt_list[0] = DLT_EN10MB;
-		p->dlt_list[1] = DLT_DOCSIS;
-		p->dlt_count = 2;
+	if (p->dlt_list == NULL) {
+		pcap_fmt_errmsg_for_errno(p->errbuf, PCAP_ERRBUF_SIZE,
+		    errno, "malloc");
+		goto bad;
 	}
+	p->dlt_list[0] = DLT_EN10MB;
+	p->dlt_list[1] = DLT_DOCSIS;
+	p->dlt_count = 2;
 
 	p->read_op = pcap_read_nit;
 	p->inject_op = pcap_inject_nit;
-	p->setfilter_op = install_bpf_program;	/* no kernel filtering */
+	p->setfilter_op = pcap_install_bpf_program;	/* no kernel filtering */
 	p->setdirection_op = NULL;	/* Not implemented. */
 	p->set_datalink_op = NULL;	/* can't change data link type */
 	p->getnonblock_op = pcap_getnonblock_fd;
@@ -371,7 +373,7 @@ pcap_create_interface(const char *device _U_, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(ebuf, sizeof (struct pcap_nit));
+	p = PCAP_CREATE_COMMON(ebuf, struct pcap_nit);
 	if (p == NULL)
 		return (NULL);
 
