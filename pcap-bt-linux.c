@@ -189,6 +189,7 @@ bt_create(const char *device, char *ebuf, int *is_ours)
 	return (p);
 }
 
+/*蓝牙抓包激活*/
 static int
 bt_activate(pcap_t* handle)
 {

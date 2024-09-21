@@ -2767,6 +2767,7 @@ pcap_activate(pcap_t *p)
 	 */
 	if (pcap_check_activated(p))
 		return (PCAP_ERROR_ACTIVATED);
+	/*激活抓包设备*/
 	status = p->activate_op(p);
 	if (status >= 0) {
 		/*

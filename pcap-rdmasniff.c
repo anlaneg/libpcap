@@ -201,6 +201,7 @@ rdmasniff_oneshot(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes
 	*sp->pkt = priv->oneshot_buffer;
 }
 
+/*完美的rdma编程示例*/
 static int
 rdmasniff_activate(pcap_t *handle)
 {
@@ -211,6 +212,7 @@ rdmasniff_activate(pcap_t *handle)
 	struct ibv_port_attr port_attr;
 	int i;
 
+	/*打开ib设备*/
 	priv->context = ibv_open_device(priv->rdma_device);
 	if (!priv->context) {
 		snprintf(handle->errbuf, PCAP_ERRBUF_SIZE,
@@ -232,6 +234,7 @@ rdmasniff_activate(pcap_t *handle)
 		goto error;
 	}
 
+	/*创建cq*/
 	priv->cq = ibv_create_cq(priv->context, RDMASNIFF_NUM_RECEIVES,
 				 NULL, priv->channel, 0);
 	if (!priv->cq) {
@@ -246,7 +249,7 @@ rdmasniff_activate(pcap_t *handle)
 	qp_init_attr.send_cq = qp_init_attr.recv_cq = priv->cq;
 	qp_init_attr.cap.max_recv_wr = RDMASNIFF_NUM_RECEIVES;
 	qp_init_attr.cap.max_recv_sge = 1;
-	qp_init_attr.qp_type = IBV_QPT_RAW_PACKET;
+	qp_init_attr.qp_type = IBV_QPT_RAW_PACKET;/*创建qp为raw packet*/
 	priv->qp = ibv_create_qp(priv->pd, &qp_init_attr);
 	if (!priv->qp) {
 		snprintf(handle->errbuf, PCAP_ERRBUF_SIZE,
@@ -275,7 +278,7 @@ rdmasniff_activate(pcap_t *handle)
 	flow_attr.type = IBV_FLOW_ATTR_SNIFFER;
 	flow_attr.size = sizeof flow_attr;
 	flow_attr.port = priv->port_num;
-	priv->flow = ibv_create_flow(priv->qp, &flow_attr);
+	priv->flow = ibv_create_flow(priv->qp, &flow_attr);/*创建flow*/
 	if (!priv->flow) {
 		snprintf(handle->errbuf, PCAP_ERRBUF_SIZE,
 			      "Failed to create flow for device %s", handle->opt.device);
@@ -323,7 +326,7 @@ rdmasniff_activate(pcap_t *handle)
 	handle->read_op = rdmasniff_read;
 	handle->stats_op = rdmasniff_stats;
 	handle->cleanup_op = rdmasniff_cleanup;
-	handle->setfilter_op = pcap_install_bpf_program;
+	handle->setfilter_op = pcap_install_bpf_program;/*支持bpf过滤*/
 	handle->setdirection_op = NULL;
 	handle->set_datalink_op = NULL;
 	handle->getnonblock_op = pcap_getnonblock_fd;
@@ -383,6 +386,7 @@ rdmasniff_create(const char *device, char *ebuf, int *is_ours)
 
 	*is_ours = 0;
 
+	/*取得ib设备*/
 	dev_list = ibv_get_device_list(&numdev);
 	if (!dev_list) {
 		return NULL;
@@ -392,8 +396,10 @@ rdmasniff_create(const char *device, char *ebuf, int *is_ours)
 		return NULL;
 	}
 
+	/*设备名称长度*/
 	namelen = strlen(device);
 
+	/*port id号*/
 	port = strchr(device, ':');
 	if (port) {
 		port_num = strtoul(port + 1, NULL, 10);
@@ -406,11 +412,13 @@ rdmasniff_create(const char *device, char *ebuf, int *is_ours)
 		port_num = 1;
 	}
 
+	/*遍历所有ib设备，检查是否与指定名称相同*/
 	for (i = 0; i < numdev; ++i) {
 		if (strlen(dev_list[i]->name) == namelen &&
 		    !strncmp(device, dev_list[i]->name, namelen)) {
 			*is_ours = 1;
 
+			/*名称匹配，创建pcap_rdmasniff*/
 			p = PCAP_CREATE_COMMON(ebuf, struct pcap_rdmasniff);
 			if (p) {
 				p->activate_op = rdmasniff_activate;
@@ -423,6 +431,7 @@ rdmasniff_create(const char *device, char *ebuf, int *is_ours)
 	}
 
 	ibv_free_device_list(dev_list);
+	/*返回创建的对象*/
 	return p;
 }
 
